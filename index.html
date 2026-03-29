@@ -57,7 +57,7 @@
             content: "";
             position: absolute;
             left: -5.5px;
-            top: 14px;
+            top: 10px;
             width: 0;
             height: 0;
             border-top: 5px solid transparent;
@@ -75,7 +75,7 @@
             content: "";
             position: absolute;
             right: -5.5px;
-            top: 14px;
+            top: 10px;
             width: 0;
             height: 0;
             border-top: 5px solid transparent;
@@ -344,6 +344,62 @@
                 setInlineEditValue('');
             };
 
+            /**
+             * 智能格式化时间逻辑 - 严格对标安卓微信
+             * @param {string} input - 原始输入的日期时间字符串，如 "3月28日 15:10"
+             * @param {boolean} isSeparator - 是否作为分割线显示 (true: 不带时分, false: 带时分)
+             */
+            const formatWeChatTime = (input, isSeparator = false) => {
+                if (!input) return '';
+                
+                // 1. 尝试解析输入内容 (支持 "3月28日 15:10" 或 "3月28日15:10")
+                const dateMatch = input.match(/(?:(\d+)月)?(\d+)日?\s*(\d{1,2})[:：](\d{2})/);
+                if (!dateMatch) return input; // 解析失败则返回原样
+
+                const now = new Date();
+                const currentYear = now.getFullYear();
+                const month = dateMatch[1] ? parseInt(dateMatch[1]) - 1 : now.getMonth();
+                const day = parseInt(dateMatch[2]);
+                const hour = parseInt(dateMatch[3]);
+                const minute = parseInt(dateMatch[4]);
+
+                const targetDate = new Date(currentYear, month, day, hour, minute);
+                
+                // 计算日期差异
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const thatDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+                const diffTime = today - thatDay;
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                // 自然周逻辑 (周一为一周开始)
+                const getMonday = (d) => {
+                    const date = new Date(d);
+                    const day = date.getDay();
+                    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+                    return new Date(date.setDate(diff)).setHours(0, 0, 0, 0);
+                };
+                const currentMonday = getMonday(now);
+                const isThisNaturalWeek = thatDay >= currentMonday;
+
+                const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                const weekStr = weekDays[targetDate.getDay()];
+
+                let datePart = '';
+                if (diffDays === 0) {
+                    datePart = isSeparator ? '今天' : '';
+                } else if (diffDays === 1) {
+                    datePart = '昨天';
+                } else if (isThisNaturalWeek) {
+                    datePart = weekStr;
+                } else {
+                    datePart = `${month + 1}月${day}日`;
+                }
+
+                if (isSeparator) return datePart;
+                return datePart ? `${datePart} ${timeStr}`.trim() : timeStr;
+            };
+
             // 响应式缩放逻辑 - 自动适配任何手机屏幕尺寸
             const [scale, setScale] = useState(1);
             useEffect(() => {
@@ -502,8 +558,8 @@
                                                 overflow: 'visible',
                                                 whiteSpace: 'nowrap',
                                                 fontSize: '18px',
-                                                fontWeight: '400',
-                                                letterSpacing: '-0.025em',
+                                                fontWeight: '500',
+                                                letterSpacing: '-0.015em',
                                                 visibility: 'visible',
                                                 opacity: '1'
                                             });
@@ -522,9 +578,9 @@
                                 const bubbles = clonedElement.querySelectorAll('.bubble-left, .bubble-right');
                                 bubbles.forEach(b => {
                                     Object.assign(b.style, {
-                                        fontSize: '15px',
-                                        lineHeight: '1.4',
-                                        padding: '9px 12px',
+                                        fontSize: '15.5px', // 微调字号
+                                        lineHeight: '1.45',
+                                        padding: '10px 12px',
                                         display: 'inline-block',
                                         verticalAlign: 'top',
                                         boxSizing: 'border-box',
@@ -535,6 +591,42 @@
                                         minHeight: '0',
                                         maxWidth: '100%',
                                         borderRadius: '4px'
+                                    });
+                                    // 为气泡尾巴设置位置
+                                    const style = document.createElement('style');
+                                    style.innerHTML = `
+                                        .bubble-left::before { top: 10px !important; }
+                                        .bubble-right::before { top: 10px !important; }
+                                    `;
+                                    clonedDoc.head.appendChild(style);
+                                 });
+
+                                 // 强制修复底部栏
+                                 const footer = clonedElement.querySelector('.absolute.bottom-0');
+                                 if (footer) {
+                                     Object.assign(footer.style, {
+                                         width: '100%',
+                                         height: '56px',
+                                         display: 'flex',
+                                         alignItems: 'center',
+                                         padding: '0 6px',
+                                         boxSizing: 'border-box',
+                                         backgroundColor: '#F7F7F7',
+                                         borderTop: '1px solid #E5E5E5'
+                                     });
+                                 }
+
+                                // 强制修复时间节点
+                                const timeNodes = clonedElement.querySelectorAll('.flex.items-center.justify-center.my-4 span');
+                                timeNodes.forEach(tn => {
+                                    Object.assign(tn.style, {
+                                        fontSize: '12px',
+                                        color: '#B2B2B2',
+                                        letterSpacing: '0.03em',
+                                        wordSpacing: '0.15em',
+                                        fontWeight: '400',
+                                        display: 'block',
+                                        textAlign: 'center'
                                     });
                                 });
 
@@ -745,7 +837,7 @@
                                                     onClick={() => startInlineEdit(msg)}
                                                     title="点击直接修改"
                                                 >
-                                                    {msg.content}
+                                                    {msg.type === 'time' ? formatWeChatTime(msg.content, true) : msg.content}
                                                 </p>
                                             )}
                                         </div>
@@ -829,20 +921,20 @@
                                 <div className="android-header h-[48px] flex items-center px-2">
                                     {/* 左侧容器：固定宽度 50px */}
                                     <div className="w-[50px] flex-shrink-0 flex items-center pl-1">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="cursor-pointer">
-                                            <polyline points="14 18 8 12 14 6"></polyline>
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="cursor-pointer">
+                                            <polyline points="15 18 9 12 15 6"></polyline>
                                         </svg>
                                     </div>
                                     {/* 中间容器：填充剩余空间并居中 */}
-                                    <div className="flex-1 flex justify-center items-center overflow-hidden">
-                                        <span className="text-[18px] font-normal text-black whitespace-nowrap overflow-hidden text-ellipsis text-center tracking-tight">{friendName}</span>
+                                    <div className="flex-1 flex justify-center items-center overflow-hidden px-2">
+                                        <span className="text-[18px] font-medium text-black whitespace-nowrap overflow-hidden text-ellipsis text-center tracking-[-0.015em]">{friendName}</span>
                                     </div>
                                     {/* 右侧容器：固定宽度 50px (与左侧相等以实现绝对居中) */}
                                     <div className="w-[50px] flex-shrink-0 flex justify-end items-center pr-1">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                            <circle cx="6" cy="12" r="1.2" fill="black"/>
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                                            <circle cx="5" cy="12" r="1.2" fill="black"/>
                                             <circle cx="12" cy="12" r="1.2" fill="black"/>
-                                            <circle cx="18" cy="12" r="1.2" fill="black"/>
+                                            <circle cx="19" cy="12" r="1.2" fill="black"/>
                                         </svg>
                                     </div>
                                 </div>
@@ -853,7 +945,12 @@
                                         if (msg.type === 'time') {
                                             return (
                                                 <div key={msg.id} className="flex items-center justify-center my-4">
-                                                    <span className="text-[12px] text-[#B2B2B2] font-normal tracking-wide">{msg.content}</span>
+                                                    <span 
+                                                        className="text-[12px] text-[#B2B2B2] font-normal"
+                                                        style={{ letterSpacing: '0.03em', wordSpacing: '0.15em' }}
+                                                    >
+                                                        {formatWeChatTime(msg.content)}
+                                                    </span>
                                                 </div>
                                             );
                                         }
@@ -866,7 +963,7 @@
                                                 />
                                                 {/* 气泡 */}
                                                 <div className={`flex flex-col ${msg.type === 'me' ? 'items-end' : 'items-start'} max-w-[72%]`}>
-                                                    <div className={`relative px-3 py-[9px] text-[15px] leading-[1.4] shadow-sm ${
+                                                    <div className={`relative px-3 py-[9px] text-[15.5px] leading-[1.45] shadow-sm ${
                                                         msg.type === 'me' 
                                                         ? 'bubble-right text-black' 
                                                         : 'bubble-left text-black'
@@ -879,50 +976,50 @@
                                     })}
                                 </div>
 
-                                {/* 微信底部输入框 Android 完美还原 */}
-                                <div className="absolute bottom-0 w-full h-[56px] bg-[#F7F7F7] border-t border-[#E5E5E5] flex items-center px-[8px]">
-                                    {/* 左侧：语音切换 */}
-                                    <div className="w-[40px] h-[40px] flex items-center justify-center">
-                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="1.2">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <path d="M12 8v8M9 11l3-3 3 3" strokeWidth="1.2"></path>
-                                            <path d="M8 15c1 1.5 3 2 4 2s3-.5 4-2" strokeWidth="1.2"></path>
+                                {/* 微信底部输入框 Android 极致还原 */}
+                            <div className="absolute bottom-0 w-full h-[56px] bg-[#F7F7F7] border-t border-[#E5E5E5] flex items-center px-[6px]">
+                                {/* 左侧：语音按钮 */}
+                                <div className="w-[44px] h-[44px] flex items-center justify-center">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="1.2">
+                                        <circle cx="12" cy="12" r="10.5"></circle>
+                                        <path d="M10 9l-2 2v2l2 2v-6z" fill="black" stroke="none"></path>
+                                        <path d="M12 9.5c1 1 1 4 0 5M14.5 7c2 2 2 8 0 10" strokeWidth="1.2" strokeLinecap="round"></path>
+                                    </svg>
+                                </div>
+                                
+                                {/* 中间：输入框 + 内部麦克风 */}
+                                <div className="flex-1 h-[38px] bg-white rounded-[4px] border border-[#E5E5E5] mx-[4px] flex items-center pr-1 relative">
+                                    <div className="flex-1"></div>
+                                    <div className="w-[32px] h-full flex items-center justify-center">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.2">
+                                            <path d="M12 4a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3z"></path>
+                                            <path d="M19 10v1a7 7 0 0 1-14 0v-1" strokeLinecap="round"></path>
+                                            <line x1="12" y1="18" x2="12" y2="21"></line>
                                         </svg>
                                     </div>
-                                    
-                                    {/* 中间：输入框 + 内部麦克风 */}
-                                    <div className="flex-1 h-[38px] bg-white rounded-[4px] border border-[#E5E5E5] mx-[6px] flex items-center pr-2 relative">
-                                        <div className="flex-1 px-3 text-[#B2B2B2] text-[15px]"></div>
-                                        <div className="w-[28px] h-full flex items-center justify-center">
-                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.2">
-                                                <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"></path>
-                                                <path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
-                                                <line x1="12" y1="18" x2="12" y2="21"></line>
-                                            </svg>
-                                        </div>
-                                    </div>
+                                </div>
 
-                                    {/* 右侧：表情 + 加号 */}
-                                    <div className="flex items-center gap-[4px]">
-                                        {/* 表情 */}
-                                        <div className="w-[38px] h-[38px] flex items-center justify-center">
-                                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="1.2">
-                                                <circle cx="12" cy="12" r="10"></circle>
-                                                <path d="M8 14.5c1.5 2 4.5 2 6 0"></path>
-                                                <circle cx="9" cy="10" r="1.2" fill="#000" stroke="none"></circle>
-                                                <circle cx="15" cy="10" r="1.2" fill="#000" stroke="none"></circle>
-                                            </svg>
-                                        </div>
-                                        {/* 加号 */}
-                                        <div className="w-[38px] h-[38px] flex items-center justify-center">
-                                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="1.2">
-                                                <circle cx="12" cy="12" r="10"></circle>
-                                                <line x1="12" y1="7" x2="12" y2="17"></line>
-                                                <line x1="7" y1="12" x2="17" y2="12"></line>
-                                            </svg>
-                                        </div>
+                                {/* 右侧：表情 + 加号 */}
+                                <div className="flex items-center">
+                                    {/* 表情 */}
+                                    <div className="w-[42px] h-[42px] flex items-center justify-center">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="1.2">
+                                            <circle cx="12" cy="12" r="10.5"></circle>
+                                            <circle cx="9" cy="10.5" r="1.2" fill="black" stroke="none"></circle>
+                                            <circle cx="15" cy="10.5" r="1.2" fill="black" stroke="none"></circle>
+                                            <path d="M8.5 14.5c1 1.5 3 2.2 4.5 1.5s2.5-1.5 2.5-1.5" strokeLinecap="round"></path>
+                                        </svg>
+                                    </div>
+                                    {/* 加号 */}
+                                    <div className="w-[42px] h-[42px] flex items-center justify-center">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="1.2">
+                                            <circle cx="12" cy="12" r="10.5"></circle>
+                                            <line x1="12" y1="7.5" x2="12" y2="16.5"></line>
+                                            <line x1="7.5" y1="12" x2="16.5" y2="12"></line>
+                                        </svg>
                                     </div>
                                 </div>
+                            </div>
                             </div>
                         </div>
 
