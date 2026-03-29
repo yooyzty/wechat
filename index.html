@@ -114,8 +114,13 @@
         function App() {
             // 从 localStorage 加载数据
             const loadData = (key, defaultValue) => {
-                const saved = localStorage.getItem(key);
-                return saved ? JSON.parse(saved) : defaultValue;
+                try {
+                    const saved = localStorage.getItem(key);
+                    return saved ? JSON.parse(saved) : defaultValue;
+                } catch (err) {
+                    console.error(`加载数据失败 [${key}]:`, err);
+                    return defaultValue;
+                }
             };
 
             // 基础设置
@@ -144,10 +149,18 @@
 
             // 保存到 localStorage
             useEffect(() => {
-                localStorage.setItem('friendName', JSON.stringify(friendName));
-                localStorage.setItem('friendAvatar', JSON.stringify(friendAvatar));
-                localStorage.setItem('myAvatar', JSON.stringify(myAvatar));
-                localStorage.setItem('messages', JSON.stringify(messages));
+                try {
+                    localStorage.setItem('friendName', JSON.stringify(friendName));
+                    localStorage.setItem('friendAvatar', JSON.stringify(friendAvatar));
+                    localStorage.setItem('myAvatar', JSON.stringify(myAvatar));
+                    localStorage.setItem('messages', JSON.stringify(messages));
+                } catch (err) {
+                    if (err.name === 'QuotaExceededError') {
+                        console.error('存储空间已满，无法保存更多数据');
+                    } else {
+                        console.error('保存数据失败:', err);
+                    }
+                }
             }, [friendName, friendAvatar, myAvatar, messages]);
 
             // 编辑状态（顶部表单）
@@ -165,17 +178,47 @@
 
             const previewRef = useRef(null);
 
-            // 处理头像上传
+            // 处理头像上传并压缩
             const handleAvatarUpload = (e, target) => {
                 const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        if (target === 'friend') setFriendAvatar(reader.result);
-                        else setMyAvatar(reader.result);
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // 创建 Canvas 进行压缩
+                        const canvas = document.createElement('canvas');
+                        const MAX_SIZE = 200; // 头像不需要太大，200px 足够
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_SIZE) {
+                                height *= MAX_SIZE / width;
+                                width = MAX_SIZE;
+                            }
+                        } else {
+                            if (height > MAX_SIZE) {
+                                width *= MAX_SIZE / height;
+                                height = MAX_SIZE;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // 导出为压缩后的 Base64
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                        
+                        if (target === 'friend') setFriendAvatar(compressedBase64);
+                        else setMyAvatar(compressedBase64);
                     };
-                    reader.readAsDataURL(file);
-                }
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
             };
 
             // 添加或保存消息
@@ -419,13 +462,8 @@
                 });
             };
 
-            // 按日期分组消息
-            const groupedMessages = messages.reduce((groups, msg) => {
-                const date = msg.date;
-                if (!groups[date]) groups[date] = [];
-                groups[date].push(msg);
-                return groups;
-            }, {});
+            // 按日期分组消息 (保留逻辑以备后用，目前 messages 为扁平数组)
+            const groupedMessages = Array.isArray(messages) ? messages : [];
 
             return (
                 <div className="flex h-screen w-full bg-gray-100 overflow-hidden">
